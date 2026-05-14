@@ -74,8 +74,8 @@ jobs:
           SHORT_SHA: ${{ needs.build.outputs.sha_short }}
         run: |
           # opms-app 이미지 줄만 갱신 (noti.kpetro / other 이미지는 건드리지 않음)
-          # 매칭: opms-app:<7-40자 hex 또는 latest> -> opms-app:<SHORT_SHA>
-          sed -i -E "s|(ghcr\.io/minsungim/opms-app:)([a-f0-9]{7,40}|latest)|\1${SHORT_SHA}|g" docker-compose.yml
+          # 구분자 # 사용 — 정규식의 alternation(|)과 sed 구분자 충돌 회피
+          sed -i -E "s#(ghcr\.io/minsungim/opms-app:)([a-f0-9]{7,40}|latest)#\1${SHORT_SHA}#g" docker-compose.yml
           echo "=== diff preview ==="
           git diff docker-compose.yml || true
 
