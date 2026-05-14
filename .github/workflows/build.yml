@@ -1,0 +1,109 @@
+name: Build and bump deploy repo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: minsungim/opms-app
+  DEPLOY_REPO: MinsungIM/sol_opms
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha_short: ${{ steps.meta.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute short SHA
+        id: meta
+        run: echo "sha_short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  bump-deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sol_opms
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DEPLOY_REPO }}
+          token: ${{ secrets.DEPLOY_REPO_PAT }}
+          submodules: false
+          path: sol_opms
+
+      - name: Update opms-app submodule pointer to new SHA
+        working-directory: sol_opms
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_PAT }}
+          NEW_SHA: ${{ github.sha }}
+        run: |
+          git -c "submodule.opms-app.url=https://x-access-token:${GH_TOKEN}@github.com/MinsungIM/opms-app.git" \
+              submodule update --init opms-app
+          (cd opms-app && git fetch origin && git checkout "${NEW_SHA}")
+
+      - name: Update image tag in docker-compose.yml
+        working-directory: sol_opms
+        env:
+          SHORT_SHA: ${{ needs.build.outputs.sha_short }}
+        run: |
+          # opms-app 이미지 줄만 갱신 (noti.kpetro / other 이미지는 건드리지 않음)
+          # 매칭: opms-app:<7-40자 hex 또는 latest> -> opms-app:<SHORT_SHA>
+          sed -i -E "s|(ghcr\.io/minsungim/opms-app:)([a-f0-9]{7,40}|latest)|\1${SHORT_SHA}|g" docker-compose.yml
+          echo "=== diff preview ==="
+          git diff docker-compose.yml || true
+
+      - name: Configure git
+        working-directory: sol_opms
+        run: |
+          git config user.email "ci-bot@minsungim.dev"
+          git config user.name "opms-app CI"
+
+      - name: Create or update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.DEPLOY_REPO_PAT }}
+          path: sol_opms
+          branch: bump/opms-app-${{ needs.build.outputs.sha_short }}
+          base: main
+          commit-message: "bump: opms-app to ${{ needs.build.outputs.sha_short }}"
+          title: "bump: opms-app to ${{ needs.build.outputs.sha_short }}"
+          body: |
+            opms-app 새 이미지가 GHCR에 빌드 완료되어 운영 반영 PR을 자동 생성합니다.
+
+            - **Image**: `ghcr.io/minsungim/opms-app:${{ needs.build.outputs.sha_short }}`
+            - **Source repo**: ${{ github.server_url }}/${{ github.repository }}
+            - **Source SHA**: ${{ github.sha }}
+            - **Source commit**: ${{ github.event.head_commit.message }}
+
+            이 PR을 머지하면 운영 서버에 자동 배포됩니다 (Phase 3 완료 후).
+          delete-branch: true
+          add-paths: |
+            docker-compose.yml
+            opms-app
