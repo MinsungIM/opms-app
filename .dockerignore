@@ -49,8 +49,7 @@ venv
 .uv
 uv.lock
 
-# 임시
+# 임시 (단, attached_assets/ 은 vite가 빌드 시 import하므로 제외하지 않음)
 tmp
-attached_assets
 artifacts
 *.log
