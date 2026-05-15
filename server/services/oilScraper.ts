@@ -4,7 +4,7 @@ import { readFile, unlink } from "fs/promises";
 import path from "path";
 
 const CHROMIUM_PATH =
-  "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium";
+  process.env.PUPPETEER_EXECUTABLE_PATH ?? "/usr/bin/chromium";
 const DOWNLOAD_PAGE =
   "https://www.opinet.co.kr/user/opdown/opDownload.do";
 const DOWNLOAD_DIR = "/tmp/opinet_downloads";
