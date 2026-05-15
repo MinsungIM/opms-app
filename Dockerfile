@@ -59,8 +59,9 @@ RUN apt-get purge -y build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root 사용자
-RUN useradd -r -u 10001 -g nogroup app \
-    && chown -R app:nogroup /app /opt/venv
+# -m: chromium wrapper가 $HOME/.config/chromium, $HOME/.cache/chromium에 접근하므로 home 디렉토리 필요
+RUN useradd -r -u 10001 -g nogroup -m -d /home/app app \
+    && chown -R app:nogroup /app /opt/venv /home/app
 USER app
 
 EXPOSE 5000
